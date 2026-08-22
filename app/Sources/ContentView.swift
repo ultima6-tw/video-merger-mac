@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVKit
 import UniformTypeIdentifiers
 
 enum MergeState: Equatable {
@@ -16,9 +17,29 @@ struct FileEntry: Identifiable {
         case failed(String)
     }
 
+    enum SilenceStatus: Equatable {
+        case notChecked
+        /// progress 為 nil 表示還不知道檔案總長（duration 尚未探測完），只能顯示不確定的轉圈圈。
+        case detecting(progress: Double?)
+        case detected([SilenceRange])
+        case failed(String)
+    }
+
     let id = UUID()
     let url: URL
     var status: ProbeStatus = .loading
+    var silenceStatus: SilenceStatus = .notChecked
+    var selectedSilenceIDs: Set<UUID> = []
+
+    var probedDuration: Double? {
+        if case .loaded(let info) = status { return info.durationSeconds }
+        return nil
+    }
+
+    var probedStreamInfo: StreamInfo? {
+        if case .loaded(let info) = status { return info }
+        return nil
+    }
 }
 
 struct ContentView: View {
@@ -27,6 +48,10 @@ struct ContentView: View {
     @State private var isImporting = false
     @State private var mergeStartDate: Date?
     @State private var elapsedSeconds: Int = 0
+    @State private var previewTarget: SilencePreviewTarget?
+    @State private var silenceProgressBoxes: [FileEntry.ID: SilenceDetectionProgress] = [:]
+    @State private var removalState: MergeState = .idle
+    @State private var removalProgressBox: RemovalProgress?
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -62,6 +87,8 @@ struct ContentView: View {
 
                         formatSummary(for: entry.status)
                             .font(.caption)
+
+                        silenceSection(for: entry)
                     }
                 }
             }
@@ -75,6 +102,7 @@ struct ContentView: View {
             .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
 
             statusView
+            removalStatusView
 
             HStack {
                 Button("加入檔案") { isImporting = true }
@@ -97,15 +125,58 @@ struct ContentView: View {
                 addFiles(urls)
             }
         }
+        .sheet(item: $previewTarget) { target in
+            SilencePreviewView(url: target.url, range: target.range)
+        }
         .onReceive(ticker) { _ in
             guard let start = mergeStartDate else { return }
             elapsedSeconds = Int(Date().timeIntervalSince(start))
+        }
+        .onReceive(ticker) { _ in
+            for (id, box) in silenceProgressBoxes {
+                let fraction = box.current()
+                updateEntry(id: id) { entry in
+                    if case .detecting = entry.silenceStatus {
+                        entry.silenceStatus = .detecting(progress: fraction)
+                    }
+                }
+            }
+        }
+        .onReceive(ticker) { _ in
+            guard let box = removalProgressBox, case .working = removalState else { return }
+            removalState = .working(box.current())
         }
     }
 
     private var isWorking: Bool {
         if case .working = state { return true }
         return false
+    }
+
+    private var isRemoving: Bool {
+        if case .working = removalState { return true }
+        return false
+    }
+
+    @ViewBuilder
+    private var removalStatusView: some View {
+        switch removalState {
+        case .idle:
+            EmptyView()
+        case .working(let message):
+            HStack {
+                ProgressView().controlSize(.small)
+                Text(message)
+            }
+        case .succeeded(let url):
+            Text("移除完成：\(url.path)")
+                .foregroundStyle(.green)
+                .textSelection(.enabled)
+        case .failed(let message):
+            Text(message)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
     }
 
     @ViewBuilder
@@ -218,6 +289,111 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private func silenceSection(for entry: FileEntry) -> some View {
+        switch entry.silenceStatus {
+        case .notChecked:
+            Button("偵測靜音") { detectSilenceEntry(id: entry.id, url: entry.url, duration: entry.probedDuration) }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.blue)
+        case .detecting(let progress):
+            if let progress {
+                HStack(spacing: 4) {
+                    ProgressView(value: progress).frame(maxWidth: 160)
+                    Text("偵測靜音中…\(Int(progress * 100))%")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.mini)
+                    Text("偵測靜音中…")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        case .detected(let ranges):
+            if ranges.isEmpty {
+                Text("沒有偵測到中段靜音片段（已忽略開頭／結尾）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("偵測到 \(ranges.count) 段中段靜音（已忽略開頭／結尾），勾選要標記移除的片段：")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(ranges) { range in
+                        HStack(spacing: 4) {
+                            Toggle(isOn: silenceToggleBinding(entryID: entry.id, rangeID: range.id)) {
+                                Text("\(durationText(range.start)) – \(durationText(range.end))（\(String(format: "%.1f", range.duration))秒）")
+                            }
+                            .toggleStyle(.checkbox)
+                            if range.extendedForDuplicate {
+                                Text("含畫面凍結，已延伸")
+                                    .foregroundStyle(.orange)
+                            }
+                            Button {
+                                previewTarget = SilencePreviewTarget(url: entry.url, range: range)
+                            } label: {
+                                Image(systemName: "play.circle")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .font(.caption)
+                    }
+                    if !entry.selectedSilenceIDs.isEmpty {
+                        Button("移除所選片段（輸出新檔案）") { performRemoval(for: entry) }
+                            .font(.caption)
+                            .disabled(isRemoving)
+                    }
+                }
+            }
+        case .failed(let message):
+            Text("靜音偵測失敗：\(message)")
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func silenceToggleBinding(entryID: FileEntry.ID, rangeID: UUID) -> Binding<Bool> {
+        Binding(
+            get: { entries.first(where: { $0.id == entryID })?.selectedSilenceIDs.contains(rangeID) ?? false },
+            set: { _ in toggleSilenceSelection(entryID: entryID, rangeID: rangeID) }
+        )
+    }
+
+    private func toggleSilenceSelection(entryID: FileEntry.ID, rangeID: UUID) {
+        updateEntry(id: entryID) { entry in
+            if entry.selectedSilenceIDs.contains(rangeID) {
+                entry.selectedSilenceIDs.remove(rangeID)
+            } else {
+                entry.selectedSilenceIDs.insert(rangeID)
+            }
+        }
+    }
+
+    private func detectSilenceEntry(id: FileEntry.ID, url: URL, duration: Double?) {
+        let box: SilenceDetectionProgress? = (duration.map { $0 > 0 } ?? false) ? SilenceDetectionProgress() : nil
+        if let box { silenceProgressBoxes[id] = box }
+        updateEntry(id: id) { $0.silenceStatus = .detecting(progress: box != nil ? 0 : nil) }
+        Task {
+            do {
+                let ranges = try await Task.detached(priority: .utility) {
+                    let raw = try FFmpegRunner.detectSilence(url, duration: duration, progress: box)
+                    let edgeFiltered = FFmpegRunner.excludingEdges(raw, duration: duration)
+                    guard let duration, duration > 0 else { return edgeFiltered }
+                    return edgeFiltered.map { FFmpegRunner.extendRangeWithNearbyFreeze($0, in: url, duration: duration) }
+                }.value
+                silenceProgressBoxes[id] = nil
+                updateEntry(id: id) { $0.silenceStatus = .detected(ranges) }
+            } catch {
+                silenceProgressBoxes[id] = nil
+                updateEntry(id: id) { $0.silenceStatus = .failed(error.localizedDescription) }
+            }
+        }
+    }
+
     private func moveUp(_ index: Int) {
         guard index > 0 else { return }
         entries.swapAt(index, index - 1)
@@ -307,8 +483,109 @@ struct ContentView: View {
         panel.allowedContentTypes = [.mpeg4Movie]
         return panel.runModal() == .OK ? panel.url : nil
     }
+
+    private func performRemoval(for entry: FileEntry) {
+        guard case .detected(let ranges) = entry.silenceStatus else { return }
+        let selected = ranges.filter { entry.selectedSilenceIDs.contains($0.id) }
+        guard !selected.isEmpty else { return }
+        guard let streamInfo = entry.probedStreamInfo else { return }
+        guard let output = chooseCleanedOutputURL(for: entry.url) else { return }
+
+        let box = RemovalProgress()
+        removalProgressBox = box
+        removalState = .working("準備移除片段…")
+
+        let url = entry.url
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try FFmpegRunner.removeSilenceRanges(
+                        from: url,
+                        ranges: selected,
+                        streamInfo: streamInfo,
+                        output: output,
+                        progress: box
+                    )
+                }.value
+                removalProgressBox = nil
+                removalState = .succeeded(output)
+            } catch {
+                removalProgressBox = nil
+                removalState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    @MainActor
+    private func chooseCleanedOutputURL(for input: URL) -> URL? {
+        let panel = NSSavePanel()
+        panel.title = "選擇輸出位置"
+        panel.nameFieldStringValue = input.deletingPathExtension().lastPathComponent + "_cleaned.mp4"
+        panel.directoryURL = input.deletingLastPathComponent()
+        panel.allowedContentTypes = [.mpeg4Movie]
+        return panel.runModal() == .OK ? panel.url : nil
+    }
 }
 
 #Preview {
     ContentView()
+}
+
+struct SilencePreviewTarget: Identifiable {
+    let id = UUID()
+    let url: URL
+    let range: SilenceRange
+}
+
+/// 播放靜音區間前後各留 2 秒的上下文，方便判斷「這段真的是要拿掉的斷線片段」還是正常的安靜場景。
+struct SilencePreviewView: View {
+    let url: URL
+    let range: SilenceRange
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+    @State private var boundaryToken: Any?
+
+    private static let contextMargin: Double = 2
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if let player {
+                VideoPlayer(player: player)
+                    .frame(width: 480, height: 270)
+            }
+            Text("靜音片段：\(timeText(range.start)) – \(timeText(range.end))（前後各留 2 秒）")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("關閉") { dismiss() }
+        }
+        .padding()
+        .onAppear(perform: setupPlayer)
+        .onDisappear(perform: teardownPlayer)
+    }
+
+    private func setupPlayer() {
+        let newPlayer = AVPlayer(url: url)
+        let startTime = CMTime(seconds: max(0, range.start - Self.contextMargin), preferredTimescale: 600)
+        let endTime = CMTime(seconds: range.end + Self.contextMargin, preferredTimescale: 600)
+        newPlayer.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            newPlayer.play()
+        }
+        boundaryToken = newPlayer.addBoundaryTimeObserver(forTimes: [NSValue(time: endTime)], queue: .main) {
+            newPlayer.pause()
+        }
+        player = newPlayer
+    }
+
+    private func teardownPlayer() {
+        if let token = boundaryToken {
+            player?.removeTimeObserver(token)
+        }
+        player?.pause()
+    }
+
+    private func timeText(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
 }

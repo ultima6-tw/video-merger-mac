@@ -8,22 +8,39 @@
 
 /* Begin PBXBuildFile section */
 		4E811E179E36FAE81CF505D8 /* FFmpegRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6C14D655C2D15C04E96F36 /* FFmpegRunner.swift */; };
+		803971DCC6539E3B7F7D6AFB /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05AB3DE21DCD0DD2B8F377B8 /* AVFoundation.framework */; };
+		A5C3716435D6833B186E75E4 /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D042CA27063C1B2ACDABEB7F /* AVKit.framework */; };
 		B4D27D645E32271A8B6BFB7D /* VideoMergerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF5BD301BD4F0D4B15C3A26 /* VideoMergerApp.swift */; };
 		D441C734287C1D1A66D8684F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98207ACBB947E5A7683E03EB /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		023A6B1FCAB9BEEA60418952 /* VideoMerger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VideoMerger.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		05AB3DE21DCD0DD2B8F377B8 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		1F6C14D655C2D15C04E96F36 /* FFmpegRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFmpegRunner.swift; sourceTree = "<group>"; };
 		3CF5BD301BD4F0D4B15C3A26 /* VideoMergerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMergerApp.swift; sourceTree = "<group>"; };
 		98207ACBB947E5A7683E03EB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		D042CA27063C1B2ACDABEB7F /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		107288C3331C1871571CD7B3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A5C3716435D6833B186E75E4 /* AVKit.framework in Frameworks */,
+				803971DCC6539E3B7F7D6AFB /* AVFoundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		36C5530D1857BA853F906F70 = {
 			isa = PBXGroup;
 			children = (
 				5C0B695E3B15CD5BE710A02B /* Sources */,
+				C3C696D85F10FF243CCDB220 /* Frameworks */,
 				73B9C989468BBB6B2C015D44 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -46,6 +63,15 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		C3C696D85F10FF243CCDB220 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				05AB3DE21DCD0DD2B8F377B8 /* AVFoundation.framework */,
+				D042CA27063C1B2ACDABEB7F /* AVKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -54,6 +80,7 @@
 			buildConfigurationList = 9AC05E69C120D9C623F9C68C /* Build configuration list for PBXNativeTarget "VideoMerger" */;
 			buildPhases = (
 				C6D35126704E4BB71312BE72 /* Sources */,
+				107288C3331C1871571CD7B3 /* Frameworks */,
 			);
 			buildRules = (
 			);

@@ -11,6 +11,9 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+    dependencies:
+      - sdk: AVKit.framework
+      - sdk: AVFoundation.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: tw.ultima6.videomerger

@@ -13,6 +13,14 @@ Built because I kept forgetting the exact `ffmpeg` incantation for lossless conc
 
 This check matters: ffmpeg's concat demuxer does not itself validate that inputs are compatible in `-c copy` mode. Feeding it mismatched files (e.g. different resolutions) exits with status 0 and produces a corrupted file — no error at all. Hence the ffprobe pre-flight check.
 
+## Silence / dead-air removal
+
+Added for a specific use case: a recorded livestream where the connection dropped briefly, leaving a stretch of frozen video, looping audio, then dead silence.
+
+- **Detect**: runs ffmpeg's `silencedetect` filter per file (audio-only, `-vn`, so it doesn't waste time decoding video) and lists the silent ranges as checkboxes, excluding ranges that touch the very start/end of the file (those are normal pre-roll/post-roll quiet, not dropouts). Each range has a play button that previews it (plus 2s of context) via AVKit before you decide whether to remove it.
+- **Extend for freezes**: a stream reconnect often freezes the picture and loops the audio for a second or two *before* it actually goes silent — plain silence detection misses that lead-in. So each detected range gets checked against ffmpeg's `freezedetect` filter in a small local window around it; if a freeze overlaps or sits right next to the silence, the range is extended to cover both. (An earlier version tried to find this by cross-referencing audio fingerprints against the pre-silence audio, on the theory that a dropout replays already-played content — that turned out to be unreliable on musical content, which has enough internal repetition — chorus, drum patterns — to produce false matches. `freezedetect` targets the actual visual symptom directly and needs no such guessing.)
+- **Remove**: outputs a *new* file, never overwrites the original. Cuts are made with the same "don't touch the bitrate" philosophy as the merge feature — only the few seconds immediately around each cut point get re-encoded (to land exactly on the requested timestamp instead of the nearest keyframe), and everything else is `-c copy`. Currently limited to H.264/AAC sources.
+
 ## Requirements
 
 - macOS 14+
