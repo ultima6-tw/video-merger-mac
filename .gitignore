@@ -1,0 +1,13 @@
+# Local project management (Claude internal)
+PROJECT.md
+NOTES.md
+
+# Xcode
+app/*.xcodeproj/xcuserdata/
+app/*.xcodeproj/project.xcworkspace/xcuserdata/
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# macOS
+.DS_Store
