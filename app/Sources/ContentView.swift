@@ -95,7 +95,7 @@ struct ContentView: View {
             .frame(minHeight: 200)
             .overlay {
                 if entries.isEmpty {
-                    Text("把 mp4 檔案拖曳到這裡，或按下方「加入檔案」")
+                    Text("Drop mp4 files here, or click “Add Files” below")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -105,11 +105,11 @@ struct ContentView: View {
             removalStatusView
 
             HStack {
-                Button("加入檔案") { isImporting = true }
+                Button("Add Files") { isImporting = true }
                 Spacer()
-                Button("清空") { entries.removeAll() }
+                Button("Clear") { entries.removeAll() }
                     .disabled(entries.isEmpty)
-                Button("合併") { performMerge() }
+                Button("Merge") { performMerge() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(entries.count < 2 || isWorking)
             }
@@ -169,7 +169,7 @@ struct ContentView: View {
                 Text(message)
             }
         case .succeeded(let url):
-            Text("移除完成：\(url.path)")
+            Text(L("Silent segments removed — saved to: %@", url.path))
                 .foregroundStyle(.green)
                 .textSelection(.enabled)
         case .failed(let message):
@@ -195,7 +195,7 @@ struct ContentView: View {
                 }
             }
         case .succeeded(let url):
-            Text("完成：\(url.path)")
+            Text(L("Done: %@", url.path))
                 .foregroundStyle(.green)
         case .failed(let message):
             Text(message)
@@ -214,7 +214,7 @@ struct ContentView: View {
     private func formatSummary(for status: FileEntry.ProbeStatus) -> some View {
         switch status {
         case .loading:
-            Text("讀取格式中…")
+            Text("Reading format…")
                 .foregroundStyle(.secondary)
         case .loaded(let info):
             Text(summary(for: info))
@@ -239,7 +239,7 @@ struct ContentView: View {
             if let channels = info.channels { audio += " \(channelText(channels))" }
             parts.append(audio)
         } else {
-            parts.append("無音訊")
+            parts.append(String(localized: "No audio"))
         }
         return parts.joined(separator: " · ")
     }
@@ -293,7 +293,7 @@ struct ContentView: View {
     private func silenceSection(for entry: FileEntry) -> some View {
         switch entry.silenceStatus {
         case .notChecked:
-            Button("偵測靜音") { detectSilenceEntry(id: entry.id, url: entry.url, duration: entry.probedDuration) }
+            Button("Detect Silence") { detectSilenceEntry(id: entry.id, url: entry.url, duration: entry.probedDuration) }
                 .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundStyle(.blue)
@@ -301,36 +301,36 @@ struct ContentView: View {
             if let progress {
                 HStack(spacing: 4) {
                     ProgressView(value: progress).frame(maxWidth: 160)
-                    Text("偵測靜音中…\(Int(progress * 100))%")
+                    Text(L("Detecting silence…%@%%", "\(Int(progress * 100))"))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             } else {
                 HStack(spacing: 4) {
                     ProgressView().controlSize(.mini)
-                    Text("偵測靜音中…")
+                    Text("Detecting silence…")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
         case .detected(let ranges):
             if ranges.isEmpty {
-                Text("沒有偵測到中段靜音片段（已忽略開頭／結尾）")
+                Text("No mid-clip silence detected (leading/trailing silence ignored)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("偵測到 \(ranges.count) 段中段靜音（已忽略開頭／結尾），勾選要標記移除的片段：")
+                    Text(L("Detected %@ silent range(s) (leading/trailing ignored). Check the ones to remove:", "\(ranges.count)"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(ranges) { range in
                         HStack(spacing: 4) {
                             Toggle(isOn: silenceToggleBinding(entryID: entry.id, rangeID: range.id)) {
-                                Text("\(durationText(range.start)) – \(durationText(range.end))（\(String(format: "%.1f", range.duration))秒）")
+                                Text(L("%@ – %@ (%@s)", durationText(range.start), durationText(range.end), String(format: "%.1f", range.duration)))
                             }
                             .toggleStyle(.checkbox)
                             if range.extendedForDuplicate {
-                                Text("含畫面凍結，已延伸")
+                                Text("Extended: includes frozen frame")
                                     .foregroundStyle(.orange)
                             }
                             Button {
@@ -343,14 +343,14 @@ struct ContentView: View {
                         .font(.caption)
                     }
                     if !entry.selectedSilenceIDs.isEmpty {
-                        Button("移除所選片段（輸出新檔案）") { performRemoval(for: entry) }
+                        Button("Remove Selected (Save As New File)") { performRemoval(for: entry) }
                             .font(.caption)
                             .disabled(isRemoving)
                     }
                 }
             }
         case .failed(let message):
-            Text("靜音偵測失敗：\(message)")
+            Text(L("Silence detection failed: %@", message))
                 .font(.caption)
                 .foregroundStyle(.red)
         }
@@ -445,7 +445,7 @@ struct ContentView: View {
     private func performMerge() {
         guard entries.count >= 2 else { return }
         let inputFiles = entries.map(\.url)
-        state = .working("檢查格式相容性…")
+        state = .working(String(localized: "Checking format compatibility…"))
         Task {
             do {
                 try await Task.detached(priority: .userInitiated) {
@@ -459,7 +459,7 @@ struct ContentView: View {
 
                 mergeStartDate = Date()
                 elapsedSeconds = 0
-                state = .working("合併中…")
+                state = .working(String(localized: "Merging…"))
                 try await Task.detached(priority: .userInitiated) {
                     try FFmpegRunner.merge(files: inputFiles, output: output)
                 }.value
@@ -477,7 +477,7 @@ struct ContentView: View {
     private func chooseOutputURL(for inputFiles: [URL]) -> URL? {
         guard let first = inputFiles.first else { return nil }
         let panel = NSSavePanel()
-        panel.title = "選擇輸出位置"
+        panel.title = String(localized: "Choose Output Location")
         panel.nameFieldStringValue = first.deletingPathExtension().lastPathComponent + "_merged.mp4"
         panel.directoryURL = first.deletingLastPathComponent()
         panel.allowedContentTypes = [.mpeg4Movie]
@@ -493,7 +493,7 @@ struct ContentView: View {
 
         let box = RemovalProgress()
         removalProgressBox = box
-        removalState = .working("準備移除片段…")
+        removalState = .working(String(localized: "Preparing to remove segments…"))
 
         let url = entry.url
         Task {
@@ -519,7 +519,7 @@ struct ContentView: View {
     @MainActor
     private func chooseCleanedOutputURL(for input: URL) -> URL? {
         let panel = NSSavePanel()
-        panel.title = "選擇輸出位置"
+        panel.title = String(localized: "Choose Output Location")
         panel.nameFieldStringValue = input.deletingPathExtension().lastPathComponent + "_cleaned.mp4"
         panel.directoryURL = input.deletingLastPathComponent()
         panel.allowedContentTypes = [.mpeg4Movie]
@@ -554,10 +554,10 @@ struct SilencePreviewView: View {
                 VideoPlayer(player: player)
                     .frame(width: 480, height: 270)
             }
-            Text("靜音片段：\(timeText(range.start)) – \(timeText(range.end))（前後各留 2 秒）")
+            Text(L("Silent range: %@ – %@ (±2s context)", timeText(range.start), timeText(range.end)))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Button("關閉") { dismiss() }
+            Button("Close") { dismiss() }
         }
         .padding()
         .onAppear(perform: setupPlayer)

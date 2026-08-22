@@ -7,8 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3DCA803C232E6690AB9B7A36 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FEB7726E147DF7DCA4624BC6 /* Localizable.xcstrings */; };
 		4E811E179E36FAE81CF505D8 /* FFmpegRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6C14D655C2D15C04E96F36 /* FFmpegRunner.swift */; };
 		803971DCC6539E3B7F7D6AFB /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05AB3DE21DCD0DD2B8F377B8 /* AVFoundation.framework */; };
+		8A6906A7B9EACD321F32067F /* Localized.swift in Sources */ = {isa = PBXBuildFile; fileRef = 363C0880DA57334E7AA75BEF /* Localized.swift */; };
 		A5C3716435D6833B186E75E4 /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D042CA27063C1B2ACDABEB7F /* AVKit.framework */; };
 		B4D27D645E32271A8B6BFB7D /* VideoMergerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF5BD301BD4F0D4B15C3A26 /* VideoMergerApp.swift */; };
 		D441C734287C1D1A66D8684F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98207ACBB947E5A7683E03EB /* ContentView.swift */; };
@@ -18,9 +20,11 @@
 		023A6B1FCAB9BEEA60418952 /* VideoMerger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VideoMerger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		05AB3DE21DCD0DD2B8F377B8 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		1F6C14D655C2D15C04E96F36 /* FFmpegRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFmpegRunner.swift; sourceTree = "<group>"; };
+		363C0880DA57334E7AA75BEF /* Localized.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localized.swift; sourceTree = "<group>"; };
 		3CF5BD301BD4F0D4B15C3A26 /* VideoMergerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMergerApp.swift; sourceTree = "<group>"; };
 		98207ACBB947E5A7683E03EB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		D042CA27063C1B2ACDABEB7F /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
+		FEB7726E147DF7DCA4624BC6 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +54,8 @@
 			children = (
 				98207ACBB947E5A7683E03EB /* ContentView.swift */,
 				1F6C14D655C2D15C04E96F36 /* FFmpegRunner.swift */,
+				FEB7726E147DF7DCA4624BC6 /* Localizable.xcstrings */,
+				363C0880DA57334E7AA75BEF /* Localized.swift */,
 				3CF5BD301BD4F0D4B15C3A26 /* VideoMergerApp.swift */,
 			);
 			path = Sources;
@@ -80,6 +86,7 @@
 			buildConfigurationList = 9AC05E69C120D9C623F9C68C /* Build configuration list for PBXNativeTarget "VideoMerger" */;
 			buildPhases = (
 				C6D35126704E4BB71312BE72 /* Sources */,
+				FD2E7E9733313C5E704142BE /* Resources */,
 				107288C3331C1871571CD7B3 /* Frameworks */,
 			);
 			buildRules = (
@@ -113,6 +120,7 @@
 			knownRegions = (
 				Base,
 				en,
+				"zh-Hant",
 			);
 			mainGroup = 36C5530D1857BA853F906F70;
 			minimizedProjectReferenceProxies = 1;
@@ -126,6 +134,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		FD2E7E9733313C5E704142BE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3DCA803C232E6690AB9B7A36 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		C6D35126704E4BB71312BE72 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -133,6 +152,7 @@
 			files = (
 				D441C734287C1D1A66D8684F /* ContentView.swift in Sources */,
 				4E811E179E36FAE81CF505D8 /* FFmpegRunner.swift in Sources */,
+				8A6906A7B9EACD321F32067F /* Localized.swift in Sources */,
 				B4D27D645E32271A8B6BFB7D /* VideoMergerApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

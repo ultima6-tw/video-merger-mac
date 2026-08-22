@@ -6,10 +6,20 @@ struct StreamInfo: Equatable {
     let height: Int
     let frameRate: String
     let pixFmt: String
+    let videoTimeBase: String?
     let audioCodec: String?
     let sampleRate: String?
     let channels: Int?
     let durationSeconds: Double?
+
+    /// "1/60" 之類的字串，取出分母當作 mp4 muxer 的 -video_track_timescale。
+    /// 拿不到就回傳 nil，呼叫端要自己處理「沒有可用 timescale」的情況。
+    var videoTimescaleValue: Int? {
+        guard let videoTimeBase else { return nil }
+        let parts = videoTimeBase.split(separator: "/")
+        guard parts.count == 2 else { return nil }
+        return Int(parts[1])
+    }
 
     // durationSeconds 不列入比較：每個檔案長度本來就會不一樣，不是不相容的判斷依據。
     static func == (lhs: StreamInfo, rhs: StreamInfo) -> Bool {
@@ -18,6 +28,7 @@ struct StreamInfo: Equatable {
         lhs.height == rhs.height &&
         lhs.frameRate == rhs.frameRate &&
         lhs.pixFmt == rhs.pixFmt &&
+        lhs.videoTimeBase == rhs.videoTimeBase &&
         lhs.audioCodec == rhs.audioCodec &&
         lhs.sampleRate == rhs.sampleRate &&
         lhs.channels == rhs.channels
@@ -66,19 +77,19 @@ enum FFmpegError: LocalizedError {
         switch self {
         case .binaryNotFound(let name):
             let package = name == "fpcalc" ? "chromaprint" : "ffmpeg"
-            return "找不到 \(name)，請確認已透過 Homebrew 安裝（brew install \(package)）。"
+            return L("Can't find %@. Make sure it's installed via Homebrew (brew install %@).", name, package)
         case .probeFailed(let file, let detail):
-            return "無法讀取「\(file)」的格式資訊：\n\(detail)"
+            return L("Couldn't read format info for “%@”:\n%@", file, detail)
         case .incompatible(let detail):
             return detail
         case .mergeFailed(let detail):
-            return "合併失敗：\n\(detail)"
+            return L("Merge failed:\n%@", detail)
         case .silenceDetectFailed(let file, let detail):
-            return "「\(file)」靜音偵測失敗：\n\(detail)"
+            return L("Silence detection failed for “%@”:\n%@", file, detail)
         case .unsupportedCodecForRemoval(let detail):
-            return "目前只支援 H.264 視訊／AAC 音訊來源做精準切除：\(detail)"
+            return L("Precise cutting currently only supports H.264 video / AAC audio sources: %@", detail)
         case .removalFailed(let detail):
-            return "移除靜音片段失敗：\n\(detail)"
+            return L("Failed to remove silent segments:\n%@", detail)
         }
     }
 }
@@ -173,12 +184,12 @@ enum FFmpegRunner {
         let (status, outData, errData) = try runCapturingStderr(ffprobe, [
             "-v", "error",
             "-print_format", "json",
-            "-show_entries", "format=duration:stream=codec_name,codec_type,width,height,r_frame_rate,pix_fmt,sample_rate,channels",
+            "-show_entries", "format=duration:stream=codec_name,codec_type,width,height,r_frame_rate,pix_fmt,sample_rate,channels,time_base",
             url.path,
         ])
 
         guard status == 0 else {
-            let msg = String(data: errData, encoding: .utf8) ?? "未知錯誤"
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
             throw FFmpegError.probeFailed(url.lastPathComponent, msg)
         }
 
@@ -191,13 +202,14 @@ enum FFmpegRunner {
             let pix_fmt: String?
             let sample_rate: String?
             let channels: Int?
+            let time_base: String?
         }
         struct Format: Decodable { let duration: String? }
         struct Probe: Decodable { let streams: [Stream]; let format: Format? }
 
         let probe = try JSONDecoder().decode(Probe.self, from: outData)
         guard let video = probe.streams.first(where: { $0.codec_type == "video" }) else {
-            throw FFmpegError.probeFailed(url.lastPathComponent, "找不到視訊軌，確認這是有效的影片檔案")
+            throw FFmpegError.probeFailed(url.lastPathComponent, String(localized: "No video track found — check that this is a valid video file"))
         }
         let audio = probe.streams.first(where: { $0.codec_type == "audio" })
 
@@ -207,6 +219,7 @@ enum FFmpegRunner {
             height: video.height ?? 0,
             frameRate: video.r_frame_rate ?? "",
             pixFmt: video.pix_fmt ?? "",
+            videoTimeBase: video.time_base,
             audioCodec: audio?.codec_name,
             sampleRate: audio?.sample_rate,
             channels: audio?.channels,
@@ -231,19 +244,31 @@ enum FFmpegRunner {
     }
 
     private static func diffDescription(first: StreamInfo, other: StreamInfo, firstName: String, otherName: String) -> String {
+        let none = String(localized: "None")
         var diffs: [String] = []
-        if first.videoCodec != other.videoCodec { diffs.append("視訊編碼：\(first.videoCodec) vs \(other.videoCodec)") }
+        if first.videoCodec != other.videoCodec { diffs.append(L("Video codec: %@ vs %@", first.videoCodec, other.videoCodec)) }
         if first.width != other.width || first.height != other.height {
-            diffs.append("解析度：\(first.width)x\(first.height) vs \(other.width)x\(other.height)")
+            diffs.append(L("Resolution: %@x%@ vs %@x%@", "\(first.width)", "\(first.height)", "\(other.width)", "\(other.height)"))
         }
-        if first.frameRate != other.frameRate { diffs.append("幀率：\(first.frameRate) vs \(other.frameRate)") }
-        if first.pixFmt != other.pixFmt { diffs.append("像素格式：\(first.pixFmt) vs \(other.pixFmt)") }
-        if first.audioCodec != other.audioCodec { diffs.append("音訊編碼：\(first.audioCodec ?? "無") vs \(other.audioCodec ?? "無")") }
-        if first.sampleRate != other.sampleRate { diffs.append("取樣率：\(first.sampleRate ?? "無") vs \(other.sampleRate ?? "無")") }
-        if first.channels != other.channels { diffs.append("聲道數：\(first.channels.map(String.init) ?? "無") vs \(other.channels.map(String.init) ?? "無")") }
+        if first.frameRate != other.frameRate { diffs.append(L("Frame rate: %@ vs %@", first.frameRate, other.frameRate)) }
+        if first.pixFmt != other.pixFmt { diffs.append(L("Pixel format: %@ vs %@", first.pixFmt, other.pixFmt)) }
+        if first.videoTimeBase != other.videoTimeBase {
+            diffs.append(L(
+                "Video timescale: %@ vs %@ (mismatched timescales muxed together via -c copy can overflow the DTS calculation and crash — not just a quality issue)",
+                first.videoTimeBase ?? none, other.videoTimeBase ?? none
+            ))
+        }
+        if first.audioCodec != other.audioCodec { diffs.append(L("Audio codec: %@ vs %@", first.audioCodec ?? none, other.audioCodec ?? none)) }
+        if first.sampleRate != other.sampleRate { diffs.append(L("Sample rate: %@ vs %@", first.sampleRate ?? none, other.sampleRate ?? none)) }
+        if first.channels != other.channels {
+            diffs.append(L("Channels: %@ vs %@", first.channels.map(String.init) ?? none, other.channels.map(String.init) ?? none))
+        }
 
-        let diffText = diffs.isEmpty ? "格式不一致" : diffs.joined(separator: "\n")
-        return "「\(firstName)」與「\(otherName)」格式不相容，無法無損合併：\n\(diffText)\n\n不會自動重新編碼，請確認來源檔案後再試。"
+        let diffText = diffs.isEmpty ? String(localized: "Formats differ") : diffs.joined(separator: "\n")
+        return L(
+            "“%@” and “%@” have incompatible formats and can't be losslessly merged:\n%@\n\nWon't re-encode automatically — please check the source files and try again.",
+            firstName, otherName, diffText
+        )
     }
 
     /// 用 silencedetect audio filter 掃出靜音區間，純分析、不產生輸出檔案，不會動到原始檔案。
@@ -444,21 +469,28 @@ enum FFmpegRunner {
         progress: RemovalProgress? = nil
     ) throws {
         guard streamInfo.videoCodec.lowercased() == "h264" else {
-            throw FFmpegError.unsupportedCodecForRemoval("視訊編碼是 \(streamInfo.videoCodec)")
+            throw FFmpegError.unsupportedCodecForRemoval(L("Video codec is %@", streamInfo.videoCodec))
         }
         guard let audioCodec = streamInfo.audioCodec, audioCodec.lowercased() == "aac" else {
-            throw FFmpegError.unsupportedCodecForRemoval("音訊編碼是 \(streamInfo.audioCodec ?? "無")")
+            throw FFmpegError.unsupportedCodecForRemoval(L("Audio codec is %@", streamInfo.audioCodec ?? String(localized: "None")))
+        }
+        // 重新編碼的片段一定要跟原始檔案用同一個 video timescale，不然 concat 出來的檔案
+        // 整體 timescale 會跑掉（實測發生過：原本 1/60 的來源，切過的輸出變成 1/15360），
+        // 這種檔案再拿去跟其他正常檔案合併時，ffmpeg mux 階段算 DTS 會溢位直接崩潰
+        // （EXC: Assertion next_dts <= 2147483647 failed at libavformat/movenc.c）。
+        guard let videoTimescale = streamInfo.videoTimescaleValue else {
+            throw FFmpegError.removalFailed(String(localized: "Couldn't read the source file's video timescale. Stopping rather than risk producing a file with a mismatched timescale (which can crash ffmpeg when merging)."))
         }
         guard let duration = streamInfo.durationSeconds, duration > 0 else {
-            throw FFmpegError.removalFailed("找不到檔案總長度")
+            throw FFmpegError.removalFailed(String(localized: "Couldn't determine file duration"))
         }
         guard !ranges.isEmpty else {
-            throw FFmpegError.removalFailed("沒有選擇要移除的片段")
+            throw FFmpegError.removalFailed(String(localized: "No segments selected for removal"))
         }
 
         let sortedRanges = ranges.sorted { $0.start < $1.start }
 
-        progress?.update("讀取關鍵影格位置…")
+        progress?.update(String(localized: "Reading keyframe positions…"))
         let keyframes = try keyframeTimestamps(url)
 
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("videomerger-\(UUID().uuidString)")
@@ -476,35 +508,35 @@ enum FFmpegRunner {
         for (index, range) in sortedRanges.enumerated() {
             let preKey = nearestKeyframe(atOrBefore: range.start, in: keyframes)
             if preKey > cursor {
-                progress?.update("複製片段 \(index + 1)/\(sortedRanges.count)…")
+                progress?.update(L("Copying segment %@/%@…", "\(index + 1)", "\(sortedRanges.count)"))
                 let piece = nextPieceURL()
-                try copySegment(url, from: cursor, to: preKey, output: piece)
+                try copySegment(url, from: cursor, to: preKey, videoTimescale: videoTimescale, output: piece)
                 pieces.append(piece)
             }
             if preKey < range.start {
-                progress?.update("重新編碼切點 \(index + 1)/\(sortedRanges.count)（前）…")
+                progress?.update(L("Re-encoding cut point %@/%@ (before)…", "\(index + 1)", "\(sortedRanges.count)"))
                 let piece = nextPieceURL()
-                try reencodeSegment(url, from: preKey, to: range.start, streamInfo: streamInfo, output: piece)
+                try reencodeSegment(url, from: preKey, to: range.start, streamInfo: streamInfo, videoTimescale: videoTimescale, output: piece)
                 pieces.append(piece)
             }
             let postKey = nearestKeyframe(atOrAfter: range.end, in: keyframes, duration: duration)
             if range.end < postKey {
-                progress?.update("重新編碼切點 \(index + 1)/\(sortedRanges.count)（後）…")
+                progress?.update(L("Re-encoding cut point %@/%@ (after)…", "\(index + 1)", "\(sortedRanges.count)"))
                 let piece = nextPieceURL()
-                try reencodeSegment(url, from: range.end, to: postKey, streamInfo: streamInfo, output: piece)
+                try reencodeSegment(url, from: range.end, to: postKey, streamInfo: streamInfo, videoTimescale: videoTimescale, output: piece)
                 pieces.append(piece)
             }
             cursor = postKey
         }
         if cursor < duration {
-            progress?.update("複製最後一段…")
+            progress?.update(String(localized: "Copying final segment…"))
             let piece = nextPieceURL()
-            try copySegment(url, from: cursor, to: duration, output: piece)
+            try copySegment(url, from: cursor, to: duration, videoTimescale: videoTimescale, output: piece)
             pieces.append(piece)
         }
 
-        progress?.update("接回所有片段…")
-        try concatPieces(pieces, output: output)
+        progress?.update(String(localized: "Stitching segments back together…"))
+        try concatPieces(pieces, videoTimescale: videoTimescale, output: output)
     }
 
     /// 用 ffprobe 的 `-skip_frame nokey` 只列出關鍵影格的時間戳，避免解碼整段影片來找 keyframe。
@@ -519,8 +551,8 @@ enum FFmpegRunner {
             url.path,
         ])
         guard status == 0 else {
-            let msg = String(data: errData, encoding: .utf8) ?? "未知錯誤"
-            throw FFmpegError.removalFailed("讀取關鍵影格失敗：\n\(msg)")
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
+            throw FFmpegError.removalFailed(L("Failed to read keyframes:\n%@", msg))
         }
         let text = String(data: outData, encoding: .utf8) ?? ""
         return text.split(separator: "\n")
@@ -545,7 +577,21 @@ enum FFmpegRunner {
 
     /// from 一定是 keyframe 時間戳（或 0），所以用 -ss 放在 -i 前面做快速、精準的 keyframe 對齊 seek，
     /// 搭配 -c copy 完全不重新編碼。
-    private static func copySegment(_ url: URL, from: Double, to: Double, output: URL) throws {
+    ///
+    /// -video_track_timescale 就算是純 -c copy 也要明確帶——實測發現 ffmpeg 的 mp4 muxer
+    /// 重新寫 mp4 容器時（即使串流本身完全沒有重新編碼），還是會自己選一個新的 timescale
+    /// （原始 1/60 變成 1/15360），不會照抄來源檔案封裝時用的值。跟 reencodeSegment 同一個坑，
+    /// 只是這裡連程式碼看起來完全「無害」的 -c copy 也會中招，一定要每個寫 mp4 的步驟都補上。
+    ///
+    /// -avoid_negative_ts make_zero：實測發現重新封裝過的片段接到別的檔案後面連續解碼時，
+    /// AAC 音軌在接點會出現「scalefactor bands exceeds limit」的解碼錯誤（不是單純沒聲音，
+    /// 是音軌 bitstream 在接點附近真的壞掉，錯誤發生後那個位置解碼器可能整段放棄、後面都沒聲音）。
+    /// 用原始 raw ADTS 位元組直接串接測試完全正常，證實問題出在 mp4 muxer 處理 encoder priming/
+    /// 負時間戳的方式，不是音訊內容本身壞掉。明確指定 make_zero 後，測試把「整段接續都沒聲音」
+    /// 降到只剩接點那一格 audio frame（約 21ms）可能有極短暫的雜訊，其餘完全正常，是目前能做到
+    /// 最好的結果——徹底消除殘留需要把音訊軌獨立用 raw ADTS 串接再跟 video 分開重新 mux，
+    /// 這個更複雜的做法還沒做。
+    private static func copySegment(_ url: URL, from: Double, to: Double, videoTimescale: Int, output: URL) throws {
         let ffmpeg = try locate("ffmpeg")
         let (status, _, errData) = try runCapturingStderr(ffmpeg, [
             "-y", "-nostats", "-loglevel", "error",
@@ -553,18 +599,30 @@ enum FFmpegRunner {
             "-i", url.path,
             "-t", String(to - from),
             "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            "-video_track_timescale", String(videoTimescale),
             output.path,
         ])
         guard status == 0 else {
-            let msg = String(data: errData, encoding: .utf8) ?? "未知錯誤"
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
             throw FFmpegError.removalFailed(msg)
         }
     }
 
     /// from 通常不是 keyframe（就是切點本身）。-ss 放在 -i 前面時，ffmpeg 對重新編碼輸出
     /// 預設就是「精準 seek」：內部仍會先跳到附近的 keyframe 再往前解碼校正，不會整段從頭解碼。
-    /// pix_fmt/frame rate/sample rate/channels 都對齊原始檔案，確保等一下 concat -c copy 接得起來。
-    private static func reencodeSegment(_ url: URL, from: Double, to: Double, streamInfo: StreamInfo, output: URL) throws {
+    /// pix_fmt/frame rate 對齊原始檔案，確保等一下 concat -c copy 接得起來。
+    /// -video_track_timescale 一定要跟原始檔案的 video timescale 一致，不然這個重新編碼片段
+    /// 的 timescale 會用 libx264/mp4 muxer 自己選的預設值（實測發生過變成 1/15360，
+    /// 原始檔案是 1/60），跟其他 -c copy 片段 concat 在一起、或之後拿去跟別的檔案合併時，
+    /// timescale 不一致會導致 ffmpeg mux 階段算 DTS 溢位崩潰。
+    ///
+    /// 音訊改成 -c:a copy（不重新編碼）：AAC 一個 frame 只有約 21ms，遠比視訊 keyframe 密集，
+    /// 在切點直接 stream copy 精準度已經很夠，不需要像視訊那樣局部重新編碼。第一版曾經重新編碼
+    /// 音訊，結果重新編碼片段用 ffmpeg 自己的 aac encoder，跟原始攝影機的 aac 編碼在接點合併時
+    /// 解碼器會出錯（見 copySegment 的說明），改回 -c:a copy 直接用同一份原始音訊，從根本避開
+    /// 混用不同編碼器造成的相容性問題。
+    private static func reencodeSegment(_ url: URL, from: Double, to: Double, streamInfo: StreamInfo, videoTimescale: Int, output: URL) throws {
         let ffmpeg = try locate("ffmpeg")
         var args = [
             "-y", "-nostats", "-loglevel", "error",
@@ -575,23 +633,26 @@ enum FFmpegRunner {
             "-preset", "slow",
             "-crf", "14",
             "-pix_fmt", streamInfo.pixFmt,
+            "-avoid_negative_ts", "make_zero",
+            "-video_track_timescale", String(videoTimescale),
         ]
         if !streamInfo.frameRate.isEmpty {
             args += ["-r", streamInfo.frameRate]
         }
-        args += ["-c:a", "aac", "-b:a", "320k"]
-        if let sampleRate = streamInfo.sampleRate { args += ["-ar", sampleRate] }
-        if let channels = streamInfo.channels { args += ["-ac", String(channels)] }
+        args += ["-c:a", "copy"]
         args.append(output.path)
 
         let (status, _, errData) = try runCapturingStderr(ffmpeg, args)
         guard status == 0 else {
-            let msg = String(data: errData, encoding: .utf8) ?? "未知錯誤"
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
             throw FFmpegError.removalFailed(msg)
         }
     }
 
-    private static func concatPieces(_ pieces: [URL], output: URL) throws {
+    /// 這一步一樣要帶 -video_track_timescale／-avoid_negative_ts，理由跟 copySegment 一樣：
+    /// concat demuxer 輸出最終檔案時，mp4 muxer 還是會自己選 timescale／處理負時間戳的方式，
+    /// 不會照抄輸入片段的值。
+    private static func concatPieces(_ pieces: [URL], videoTimescale: Int, output: URL) throws {
         let ffmpeg = try locate("ffmpeg")
         let listFile = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
         let listContent = pieces.map { url -> String in
@@ -606,10 +667,12 @@ enum FFmpegRunner {
             "-f", "concat", "-safe", "0",
             "-i", listFile.path,
             "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            "-video_track_timescale", String(videoTimescale),
             output.path,
         ])
         guard status == 0 else {
-            let msg = String(data: errData, encoding: .utf8) ?? "未知錯誤"
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
             throw FFmpegError.removalFailed(msg)
         }
     }
@@ -625,17 +688,22 @@ enum FFmpegRunner {
         try listContent.write(to: listFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: listFile) }
 
+        // -avoid_negative_ts make_zero：防護網，跟 removeSilenceRanges 內部 concat 同一個坑
+        // （見 copySegment 的說明）。原始、未經處理過的檔案互相合併通常不會踩到，但只要有任何
+        // 一個輸入檔案先前被 ffmpeg 重新封裝過（例如先用別的工具剪過、或用了這個 app 的移除功能），
+        // 這個防護網就可能有用，加上去幾乎沒有成本。
         let (status, _, errData) = try runCapturingStderr(ffmpeg, [
             "-y",
             "-nostats", "-loglevel", "error",
             "-f", "concat", "-safe", "0",
             "-i", listFile.path,
             "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
             output.path,
         ])
 
         guard status == 0 else {
-            let msg = String(data: errData, encoding: .utf8) ?? "未知錯誤"
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
             throw FFmpegError.mergeFailed(msg)
         }
     }

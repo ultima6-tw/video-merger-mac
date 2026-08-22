@@ -1,0 +1,546 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Silent segments removed — saved to: %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移除靜音片段，儲存於：%@"
+          }
+        }
+      }
+    },
+    "Done: %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成：%@"
+          }
+        }
+      }
+    },
+    "Detecting silence…%@%%": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "偵測靜音中…%@%%"
+          }
+        }
+      }
+    },
+    "Detected %@ silent range(s) (leading/trailing ignored). Check the ones to remove:": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "偵測到 %@ 段中段靜音（已忽略開頭／結尾），勾選要標記移除的片段："
+          }
+        }
+      }
+    },
+    "%@ – %@ (%@s)": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ – %@（%@秒）"
+          }
+        }
+      }
+    },
+    "Silence detection failed: %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "靜音偵測失敗：%@"
+          }
+        }
+      }
+    },
+    "Silent range: %@ – %@ (±2s context)": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "靜音片段：%@ – %@（前後各留 2 秒）"
+          }
+        }
+      }
+    },
+    "Can't find %@. Make sure it's installed via Homebrew (brew install %@).": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到 %@，請確認已透過 Homebrew 安裝（brew install %@）。"
+          }
+        }
+      }
+    },
+    "Couldn't read format info for “%@”:\n%@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法讀取「%@」的格式資訊：\n%@"
+          }
+        }
+      }
+    },
+    "Merge failed:\n%@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合併失敗：\n%@"
+          }
+        }
+      }
+    },
+    "Silence detection failed for “%@”:\n%@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」靜音偵測失敗：\n%@"
+          }
+        }
+      }
+    },
+    "Precise cutting currently only supports H.264 video / AAC audio sources: %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前只支援 H.264 視訊／AAC 音訊來源做精準切除：%@"
+          }
+        }
+      }
+    },
+    "Failed to remove silent segments:\n%@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除靜音片段失敗：\n%@"
+          }
+        }
+      }
+    },
+    "Video codec: %@ vs %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "視訊編碼：%@ vs %@"
+          }
+        }
+      }
+    },
+    "Resolution: %@x%@ vs %@x%@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解析度：%@x%@ vs %@x%@"
+          }
+        }
+      }
+    },
+    "Frame rate: %@ vs %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "幀率：%@ vs %@"
+          }
+        }
+      }
+    },
+    "Pixel format: %@ vs %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "像素格式：%@ vs %@"
+          }
+        }
+      }
+    },
+    "Audio codec: %@ vs %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊編碼：%@ vs %@"
+          }
+        }
+      }
+    },
+    "Sample rate: %@ vs %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取樣率：%@ vs %@"
+          }
+        }
+      }
+    },
+    "Channels: %@ vs %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聲道數：%@ vs %@"
+          }
+        }
+      }
+    },
+    "Video codec is %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "視訊編碼是 %@"
+          }
+        }
+      }
+    },
+    "Audio codec is %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊編碼是 %@"
+          }
+        }
+      }
+    },
+    "Copying segment %@/%@…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製片段 %@/%@…"
+          }
+        }
+      }
+    },
+    "Re-encoding cut point %@/%@ (before)…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新編碼切點 %@/%@（前）…"
+          }
+        }
+      }
+    },
+    "Re-encoding cut point %@/%@ (after)…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新編碼切點 %@/%@（後）…"
+          }
+        }
+      }
+    },
+    "Failed to read keyframes:\n%@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讀取關鍵影格失敗：\n%@"
+          }
+        }
+      }
+    },
+    "Video timescale: %@ vs %@ (mismatched timescales muxed together via -c copy can overflow the DTS calculation and crash — not just a quality issue)": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "視訊 timescale：%@ vs %@（timescale 不一致混在一起 -c copy，muxer 算 DTS 可能溢位直接崩潰，不是單純畫質問題）"
+          }
+        }
+      }
+    },
+    "“%@” and “%@” have incompatible formats and can't be losslessly merged:\n%@\n\nWon't re-encode automatically — please check the source files and try again.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」與「%@」格式不相容，無法無損合併：\n%@\n\n不會自動重新編碼，請確認來源檔案後再試。"
+          }
+        }
+      }
+    },
+    "No audio": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無音訊"
+          }
+        }
+      }
+    },
+    "Checking format compatibility…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢查格式相容性…"
+          }
+        }
+      }
+    },
+    "Merging…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合併中…"
+          }
+        }
+      }
+    },
+    "Choose Output Location": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選擇輸出位置"
+          }
+        }
+      }
+    },
+    "Preparing to remove segments…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "準備移除片段…"
+          }
+        }
+      }
+    },
+    "Unknown error": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知錯誤"
+          }
+        }
+      }
+    },
+    "No video track found — check that this is a valid video file": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到視訊軌，確認這是有效的影片檔案"
+          }
+        }
+      }
+    },
+    "None": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無"
+          }
+        }
+      }
+    },
+    "Formats differ": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "格式不一致"
+          }
+        }
+      }
+    },
+    "Couldn't read the source file's video timescale. Stopping rather than risk producing a file with a mismatched timescale (which can crash ffmpeg when merging).": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讀不到原始檔案的 video timescale，為了避免切出來的檔案 timescale 跟原始不一致（合併時會導致 ffmpeg 崩潰），不繼續執行"
+          }
+        }
+      }
+    },
+    "Couldn't determine file duration": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到檔案總長度"
+          }
+        }
+      }
+    },
+    "No segments selected for removal": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有選擇要移除的片段"
+          }
+        }
+      }
+    },
+    "Reading keyframe positions…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讀取關鍵影格位置…"
+          }
+        }
+      }
+    },
+    "Copying final segment…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製最後一段…"
+          }
+        }
+      }
+    },
+    "Stitching segments back together…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接回所有片段…"
+          }
+        }
+      }
+    },
+    "Drop mp4 files here, or click “Add Files” below": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 mp4 檔案拖曳到這裡，或按下方「加入檔案」"
+          }
+        }
+      }
+    },
+    "Reading format…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讀取格式中…"
+          }
+        }
+      }
+    },
+    "Detecting silence…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "偵測靜音中…"
+          }
+        }
+      }
+    },
+    "No mid-clip silence detected (leading/trailing silence ignored)": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有偵測到中段靜音片段（已忽略開頭／結尾）"
+          }
+        }
+      }
+    },
+    "Extended: includes frozen frame": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "含畫面凍結，已延伸"
+          }
+        }
+      }
+    },
+    "Add Files": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入檔案"
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空"
+          }
+        }
+      }
+    },
+    "Merge": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合併"
+          }
+        }
+      }
+    },
+    "Detect Silence": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "偵測靜音"
+          }
+        }
+      }
+    },
+    "Remove Selected (Save As New File)": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除所選片段（輸出新檔案）"
+          }
+        }
+      }
+    },
+    "Close": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
