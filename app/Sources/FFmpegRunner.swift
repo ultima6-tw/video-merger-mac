@@ -449,18 +449,25 @@ enum FFmpegRunner {
 
     /// 把選定的靜音區間從影片裡切掉，輸出成新檔案，不動原始檔案。
     ///
-    /// 做法：只在每個切點前後重新編碼一小段（貼齊最近的 keyframe），其餘大部分內容維持
+    /// 做法：只在每個切點前後重新編碼一小段視訊（貼齊最近的 keyframe），其餘大部分內容維持
     /// stream copy，盡量不動到畫質。演算法：
     ///   1. 依序處理每個（已排序的）靜音區間，游標 cursor 一開始是 0
-    ///   2. [cursor, 切點前最近 keyframe] 用 -c copy（這段一定跨好幾個 keyframe，量體最大）
-    ///   3. [切點前最近 keyframe, range.start] 重新編碼（通常只有一小段，因為 keyframe 間隔本來就不長）
+    ///   2. [cursor, 切點前最近 keyframe] 視訊用 -c copy（這段一定跨好幾個 keyframe，量體最大）
+    ///   3. [切點前最近 keyframe, range.start] 視訊重新編碼（通常只有一小段，因為 keyframe 間隔本來就不長）
     ///   4. range.start ~ range.end 之間（靜音本身）整段捨棄，這就是「移除」的實際動作
-    ///   5. [range.end, 切點後最近 keyframe] 重新編碼
-    ///   6. 游標移到「切點後最近 keyframe」，換下一個區間，最後剩餘的 [cursor, duration] 用 -c copy
-    ///   7. 全部片段依序用 concat demuxer 的 -c copy 接回去（重新編碼的片段參數對齊原始碼，接得起來）
+    ///   5. [range.end, 切點後最近 keyframe] 視訊重新編碼
+    ///   6. 游標移到「切點後最近 keyframe」，換下一個區間，最後剩餘的 [cursor, duration] 視訊用 -c copy
+    ///
+    /// 音訊完全獨立處理，全程 -c:a copy、不重新編碼：每個保留片段各自抽出 raw ADTS，
+    /// 最後用位元組直接串接（不透過 mp4 muxer 的 concat）。這是實測過的教訓——即使視訊/音訊
+    /// 都只是純 stream copy，讓 concat demuxer／mp4 muxer 處理音訊接點還是可能在真實播放器上
+    /// 造成那個接點附近完全沒有聲音（scalefactor bands 解碼錯誤），用 raw ADTS 位元組串接完全
+    /// 避開這個問題，因為根本不經過會出錯的那個 mp4 mux 步驟。
+    ///
+    /// 最後把「接好的視訊」跟「接好的音訊」重新 mux 成一個檔案，才是最終輸出。
     ///
     /// 目前只驗證過 H.264/AAC 這組最常見的攝影機/OBS 錄影格式，其他編碼組合會直接報錯，
-    /// 因為重新編碼時要用對應的 encoder（例如 HEVC 來源要用 libx265），還沒補上這個對應表。
+    /// 因為重新編碼視訊時要用對應的 encoder（例如 HEVC 來源要用 libx265），還沒補上這個對應表。
     static func removeSilenceRanges(
         from url: URL,
         ranges: [SilenceRange],
@@ -497,11 +504,22 @@ enum FFmpegRunner {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        var pieces: [URL] = []
+        var videoPieces: [URL] = []
+        var audioPieces: [URL] = []
         var pieceIndex = 0
-        func nextPieceURL() -> URL {
+
+        func addKeptSegment(from: Double, to: Double, reencodeVideo: Bool) throws {
             pieceIndex += 1
-            return tempDir.appendingPathComponent("piece_\(pieceIndex).mp4")
+            let videoPiece = tempDir.appendingPathComponent("video_\(pieceIndex).mp4")
+            let audioPiece = tempDir.appendingPathComponent("audio_\(pieceIndex).aac")
+            if reencodeVideo {
+                try reencodeVideoOnly(url, from: from, to: to, streamInfo: streamInfo, videoTimescale: videoTimescale, output: videoPiece)
+            } else {
+                try copyVideoOnly(url, from: from, to: to, videoTimescale: videoTimescale, output: videoPiece)
+            }
+            try extractAudioADTS(url, from: from, to: to, output: audioPiece)
+            videoPieces.append(videoPiece)
+            audioPieces.append(audioPiece)
         }
 
         var cursor: Double = 0
@@ -509,34 +527,30 @@ enum FFmpegRunner {
             let preKey = nearestKeyframe(atOrBefore: range.start, in: keyframes)
             if preKey > cursor {
                 progress?.update(L("Copying segment %@/%@…", "\(index + 1)", "\(sortedRanges.count)"))
-                let piece = nextPieceURL()
-                try copySegment(url, from: cursor, to: preKey, videoTimescale: videoTimescale, output: piece)
-                pieces.append(piece)
+                try addKeptSegment(from: cursor, to: preKey, reencodeVideo: false)
             }
             if preKey < range.start {
                 progress?.update(L("Re-encoding cut point %@/%@ (before)…", "\(index + 1)", "\(sortedRanges.count)"))
-                let piece = nextPieceURL()
-                try reencodeSegment(url, from: preKey, to: range.start, streamInfo: streamInfo, videoTimescale: videoTimescale, output: piece)
-                pieces.append(piece)
+                try addKeptSegment(from: preKey, to: range.start, reencodeVideo: true)
             }
             let postKey = nearestKeyframe(atOrAfter: range.end, in: keyframes, duration: duration)
             if range.end < postKey {
                 progress?.update(L("Re-encoding cut point %@/%@ (after)…", "\(index + 1)", "\(sortedRanges.count)"))
-                let piece = nextPieceURL()
-                try reencodeSegment(url, from: range.end, to: postKey, streamInfo: streamInfo, videoTimescale: videoTimescale, output: piece)
-                pieces.append(piece)
+                try addKeptSegment(from: range.end, to: postKey, reencodeVideo: true)
             }
             cursor = postKey
         }
         if cursor < duration {
             progress?.update(String(localized: "Copying final segment…"))
-            let piece = nextPieceURL()
-            try copySegment(url, from: cursor, to: duration, videoTimescale: videoTimescale, output: piece)
-            pieces.append(piece)
+            try addKeptSegment(from: cursor, to: duration, reencodeVideo: false)
         }
 
         progress?.update(String(localized: "Stitching segments back together…"))
-        try concatPieces(pieces, videoTimescale: videoTimescale, output: output)
+        let videoConcat = tempDir.appendingPathComponent("video_concat.mp4")
+        try concatVideoPieces(videoPieces, videoTimescale: videoTimescale, output: videoConcat)
+        let audioConcat = tempDir.appendingPathComponent("audio_concat.aac")
+        try concatRawFiles(audioPieces, output: audioConcat)
+        try muxVideoAudio(video: videoConcat, audio: audioConcat, videoTimescale: videoTimescale, output: output, wrapError: FFmpegError.removalFailed)
     }
 
     /// 用 ffprobe 的 `-skip_frame nokey` 只列出關鍵影格的時間戳，避免解碼整段影片來找 keyframe。
@@ -576,29 +590,20 @@ enum FFmpegRunner {
     }
 
     /// from 一定是 keyframe 時間戳（或 0），所以用 -ss 放在 -i 前面做快速、精準的 keyframe 對齊 seek，
-    /// 搭配 -c copy 完全不重新編碼。
+    /// 搭配 -c:v copy 完全不重新編碼視訊，`-an` 完全不含音訊（音訊獨立用 extractAudioADTS 處理）。
     ///
     /// -video_track_timescale 就算是純 -c copy 也要明確帶——實測發現 ffmpeg 的 mp4 muxer
     /// 重新寫 mp4 容器時（即使串流本身完全沒有重新編碼），還是會自己選一個新的 timescale
-    /// （原始 1/60 變成 1/15360），不會照抄來源檔案封裝時用的值。跟 reencodeSegment 同一個坑，
+    /// （原始 1/60 變成 1/15360），不會照抄來源檔案封裝時用的值。跟 reencodeVideoOnly 同一個坑，
     /// 只是這裡連程式碼看起來完全「無害」的 -c copy 也會中招，一定要每個寫 mp4 的步驟都補上。
-    ///
-    /// -avoid_negative_ts make_zero：實測發現重新封裝過的片段接到別的檔案後面連續解碼時，
-    /// AAC 音軌在接點會出現「scalefactor bands exceeds limit」的解碼錯誤（不是單純沒聲音，
-    /// 是音軌 bitstream 在接點附近真的壞掉，錯誤發生後那個位置解碼器可能整段放棄、後面都沒聲音）。
-    /// 用原始 raw ADTS 位元組直接串接測試完全正常，證實問題出在 mp4 muxer 處理 encoder priming/
-    /// 負時間戳的方式，不是音訊內容本身壞掉。明確指定 make_zero 後，測試把「整段接續都沒聲音」
-    /// 降到只剩接點那一格 audio frame（約 21ms）可能有極短暫的雜訊，其餘完全正常，是目前能做到
-    /// 最好的結果——徹底消除殘留需要把音訊軌獨立用 raw ADTS 串接再跟 video 分開重新 mux，
-    /// 這個更複雜的做法還沒做。
-    private static func copySegment(_ url: URL, from: Double, to: Double, videoTimescale: Int, output: URL) throws {
+    private static func copyVideoOnly(_ url: URL, from: Double, to: Double, videoTimescale: Int, output: URL) throws {
         let ffmpeg = try locate("ffmpeg")
         let (status, _, errData) = try runCapturingStderr(ffmpeg, [
             "-y", "-nostats", "-loglevel", "error",
             "-ss", String(from),
             "-i", url.path,
             "-t", String(to - from),
-            "-c", "copy",
+            "-an", "-c:v", "copy",
             "-avoid_negative_ts", "make_zero",
             "-video_track_timescale", String(videoTimescale),
             output.path,
@@ -617,19 +622,20 @@ enum FFmpegRunner {
     /// 原始檔案是 1/60），跟其他 -c copy 片段 concat 在一起、或之後拿去跟別的檔案合併時，
     /// timescale 不一致會導致 ffmpeg mux 階段算 DTS 溢位崩潰。
     ///
-    /// 音訊改成 -c:a copy（不重新編碼）：AAC 一個 frame 只有約 21ms，遠比視訊 keyframe 密集，
-    /// 在切點直接 stream copy 精準度已經很夠，不需要像視訊那樣局部重新編碼。第一版曾經重新編碼
-    /// 音訊，結果重新編碼片段用 ffmpeg 自己的 aac encoder，跟原始攝影機的 aac 編碼在接點合併時
-    /// 解碼器會出錯（見 copySegment 的說明），改回 -c:a copy 直接用同一份原始音訊，從根本避開
-    /// 混用不同編碼器造成的相容性問題。
-    private static func reencodeSegment(_ url: URL, from: Double, to: Double, streamInfo: StreamInfo, videoTimescale: Int, output: URL) throws {
+    /// `-an`：完全不含音訊，只重新編碼視訊。音訊全部交給 extractAudioADTS 獨立處理、最後用
+    /// raw ADTS 位元組串接再跟視訊重新 mux——這是實測驗證過的教訓：即使音訊全程 -c:a copy
+    /// 不重新編碼，只要視訊/音訊被 concat demuxer／mp4 muxer 一起處理，接點附近還是可能出現
+    /// AAC 解碼錯誤（scalefactor bands exceeds limit），真實播放器（不像 ffmpeg 自己的解碼器
+    /// 那麼寬容）遇到這個錯誤會讓接點之後一大段完全沒有聲音。把音訊完全獨立、用位元組層級串接，
+    /// 才是實測完全零瑕疵的做法。
+    private static func reencodeVideoOnly(_ url: URL, from: Double, to: Double, streamInfo: StreamInfo, videoTimescale: Int, output: URL) throws {
         let ffmpeg = try locate("ffmpeg")
         var args = [
             "-y", "-nostats", "-loglevel", "error",
             "-ss", String(from),
             "-i", url.path,
             "-t", String(to - from),
-            "-c:v", "libx264",
+            "-an", "-c:v", "libx264",
             "-preset", "slow",
             "-crf", "14",
             "-pix_fmt", streamInfo.pixFmt,
@@ -639,7 +645,6 @@ enum FFmpegRunner {
         if !streamInfo.frameRate.isEmpty {
             args += ["-r", streamInfo.frameRate]
         }
-        args += ["-c:a", "copy"]
         args.append(output.path)
 
         let (status, _, errData) = try runCapturingStderr(ffmpeg, args)
@@ -649,10 +654,58 @@ enum FFmpegRunner {
         }
     }
 
-    /// 這一步一樣要帶 -video_track_timescale／-avoid_negative_ts，理由跟 copySegment 一樣：
+    /// 抽出 [from, to] 這段的音訊，存成 raw ADTS（不是 mp4 容器）。之後多段 ADTS 檔案會直接用
+    /// 位元組串接（見 concatRawFiles），完全繞過 mp4 muxer 處理 concat 的方式，避開接點解碼錯誤。
+    private static func extractAudioADTS(_ url: URL, from: Double, to: Double, output: URL) throws {
+        let ffmpeg = try locate("ffmpeg")
+        let (status, _, errData) = try runCapturingStderr(ffmpeg, [
+            "-y", "-nostats", "-loglevel", "error",
+            "-ss", String(from),
+            "-i", url.path,
+            "-t", String(to - from),
+            "-vn", "-c:a", "copy",
+            "-f", "adts",
+            output.path,
+        ])
+        guard status == 0 else {
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
+            throw FFmpegError.removalFailed(msg)
+        }
+    }
+
+    /// 整個檔案的音訊都要，沒有 -ss/-t 限制範圍（merge() 用）。
+    private static func extractAudioADTS(_ url: URL, output: URL) throws {
+        let ffmpeg = try locate("ffmpeg")
+        let (status, _, errData) = try runCapturingStderr(ffmpeg, [
+            "-y", "-nostats", "-loglevel", "error",
+            "-i", url.path,
+            "-vn", "-c:a", "copy",
+            "-f", "adts",
+            output.path,
+        ])
+        guard status == 0 else {
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
+            throw FFmpegError.mergeFailed(msg)
+        }
+    }
+
+    /// 純位元組串接（不透過任何 ffmpeg mux 步驟）。實測證實這是唯一完全不會在接點產生
+    /// AAC 解碼錯誤的方式——連 concat demuxer 的 -c copy 都會踩到 mp4 muxer 處理
+    /// encoder priming／負時間戳的坑，raw ADTS 位元組直接串接則完全繞過這一層。
+    private static func concatRawFiles(_ files: [URL], output: URL) throws {
+        FileManager.default.createFile(atPath: output.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: output)
+        defer { try? handle.close() }
+        for file in files {
+            let data = try Data(contentsOf: file)
+            handle.write(data)
+        }
+    }
+
+    /// 這一步一樣要帶 -video_track_timescale／-avoid_negative_ts，理由跟 copyVideoOnly 一樣：
     /// concat demuxer 輸出最終檔案時，mp4 muxer 還是會自己選 timescale／處理負時間戳的方式，
-    /// 不會照抄輸入片段的值。
-    private static func concatPieces(_ pieces: [URL], videoTimescale: Int, output: URL) throws {
+    /// 不會照抄輸入片段的值。輸入的每個片段都已經是純視訊（無音訊），`-an` 再保險一次。
+    private static func concatVideoPieces(_ pieces: [URL], videoTimescale: Int, output: URL) throws {
         let ffmpeg = try locate("ffmpeg")
         let listFile = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
         let listContent = pieces.map { url -> String in
@@ -666,7 +719,7 @@ enum FFmpegRunner {
             "-y", "-nostats", "-loglevel", "error",
             "-f", "concat", "-safe", "0",
             "-i", listFile.path,
-            "-c", "copy",
+            "-an", "-c:v", "copy",
             "-avoid_negative_ts", "make_zero",
             "-video_track_timescale", String(videoTimescale),
             output.path,
@@ -677,34 +730,74 @@ enum FFmpegRunner {
         }
     }
 
-    static func merge(files: [URL], output: URL) throws {
+    /// 把獨立處理好的視訊（已經串接完成的 mp4，無音訊）跟音訊（raw ADTS）重新合成一個檔案。
+    /// `wrapError` 讓呼叫端（removeSilenceRanges vs merge）決定失敗時要包成哪一種 FFmpegError，
+    /// 這樣使用者看到的錯誤訊息才會對應到他實際在做的操作。
+    private static func muxVideoAudio(video: URL, audio: URL, videoTimescale: Int, output: URL, wrapError: (String) -> FFmpegError) throws {
         let ffmpeg = try locate("ffmpeg")
+        let (status, _, errData) = try runCapturingStderr(ffmpeg, [
+            "-y", "-nostats", "-loglevel", "error",
+            "-i", video.path,
+            "-i", audio.path,
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "copy",
+            "-video_track_timescale", String(videoTimescale),
+            "-avoid_negative_ts", "make_zero",
+            output.path,
+        ])
+        guard status == 0 else {
+            let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
+            throw wrapError(msg)
+        }
+    }
 
-        let listFile = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+    /// 跟 removeSilenceRanges 同一套教訓：即使輸入檔案完全沒被動過，讓 concat demuxer／mp4 muxer
+    /// 同時處理視訊＋音訊，接點附近還是可能出現 AAC 解碼錯誤，真實播放器遇到會讓那之後一大段
+    /// 完全沒聲音（不是只有 ffmpeg 自己測試時看到的一格小瑕疵）。改成音訊獨立用 raw ADTS
+    /// 位元組串接、視訊維持 concat demuxer（視訊沒有這個問題），最後重新 mux 回一個檔案。
+    static func merge(files: [URL], output: URL) throws {
+        guard let first = files.first else { return }
+        let firstInfo = try probe(first)
+        guard let videoTimescale = firstInfo.videoTimescaleValue else {
+            throw FFmpegError.mergeFailed(String(localized: "Couldn't read the source file's video timescale. Stopping rather than risk producing a file with a mismatched timescale (which can crash ffmpeg when merging)."))
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("videomerger-merge-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var audioPieces: [URL] = []
+        for (index, file) in files.enumerated() {
+            let audioPiece = tempDir.appendingPathComponent("audio_\(index).aac")
+            try extractAudioADTS(file, output: audioPiece)
+            audioPieces.append(audioPiece)
+        }
+        let audioConcat = tempDir.appendingPathComponent("audio_concat.aac")
+        try concatRawFiles(audioPieces, output: audioConcat)
+
+        let ffmpeg = try locate("ffmpeg")
+        let listFile = tempDir.appendingPathComponent("list.txt")
         let listContent = files.map { url -> String in
             let escaped = url.path.replacingOccurrences(of: "'", with: "'\\''")
             return "file '\(escaped)'"
         }.joined(separator: "\n")
         try listContent.write(to: listFile, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: listFile) }
 
-        // -avoid_negative_ts make_zero：防護網，跟 removeSilenceRanges 內部 concat 同一個坑
-        // （見 copySegment 的說明）。原始、未經處理過的檔案互相合併通常不會踩到，但只要有任何
-        // 一個輸入檔案先前被 ffmpeg 重新封裝過（例如先用別的工具剪過、或用了這個 app 的移除功能），
-        // 這個防護網就可能有用，加上去幾乎沒有成本。
+        let videoConcat = tempDir.appendingPathComponent("video_concat.mp4")
         let (status, _, errData) = try runCapturingStderr(ffmpeg, [
-            "-y",
-            "-nostats", "-loglevel", "error",
+            "-y", "-nostats", "-loglevel", "error",
             "-f", "concat", "-safe", "0",
             "-i", listFile.path,
-            "-c", "copy",
+            "-an", "-c:v", "copy",
             "-avoid_negative_ts", "make_zero",
-            output.path,
+            "-video_track_timescale", String(videoTimescale),
+            videoConcat.path,
         ])
-
         guard status == 0 else {
             let msg = String(data: errData, encoding: .utf8) ?? String(localized: "Unknown error")
             throw FFmpegError.mergeFailed(msg)
         }
+
+        try muxVideoAudio(video: videoConcat, audio: audioConcat, videoTimescale: videoTimescale, output: output, wrapError: FFmpegError.mergeFailed)
     }
 }
